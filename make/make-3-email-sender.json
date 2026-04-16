@@ -1,0 +1,303 @@
+{
+  "name": "03 — Email Sender",
+  "blueprint": {
+    "modules": [
+      {
+        "id": 1,
+        "module": "google-sheets:SearchRows",
+        "version": 2,
+        "parameters": {
+          "includeSubfolders": false
+        },
+        "mapper": {
+          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+          "sheetId": "LEADS",
+          "includeColumnHeaders": true
+        },
+        "metadata": {
+          "designer": {"x": 0, "y": 0},
+          "restore": {}
+        }
+      },
+      {
+        "id": 2,
+        "module": "builtin:BasicRouter",
+        "version": 1,
+        "parameters": {},
+        "mapper": null,
+        "metadata": {
+          "designer": {"x": 300, "y": 0},
+          "restore": {}
+        },
+        "routes": [
+          {
+            "flow": [
+              {"id": 3},
+              {"id": 4},
+              {"id": 5},
+              {"id": 6},
+              {"id": 7},
+              {"id": 8}
+            ],
+            "label": "Route 1 — Send initial cold email",
+            "condition": {
+              "operator": "AND",
+              "operands": [
+                {
+                  "operator": "notEqual",
+                  "operands": [
+                    "{{1.email}}",
+                    ""
+                  ]
+                },
+                {
+                  "operator": "notEqual",
+                  "operands": [
+                    "{{1.cold_email_message}}",
+                    ""
+                  ]
+                },
+                {
+                  "operator": "equal",
+                  "operands": [
+                    "{{1.email_sent}}",
+                    ""
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "flow": [
+              {"id": 10},
+              {"id": 11},
+              {"id": 12}
+            ],
+            "label": "Route 2 — Send follow-up (5+ days after initial)",
+            "condition": {
+              "operator": "AND",
+              "operands": [
+                {
+                  "operator": "notEqual",
+                  "operands": [
+                    "{{1.email}}",
+                    ""
+                  ]
+                },
+                {
+                  "operator": "notEqual",
+                  "operands": [
+                    "{{1.email_sent}}",
+                    ""
+                  ]
+                },
+                {
+                  "operator": "equal",
+                  "operands": [
+                    "{{1.email_replied}}",
+                    ""
+                  ]
+                },
+                {
+                  "operator": "greaterThanOrEqual",
+                  "operands": [
+                    "{{dateDifference(now; 1.email_sent; \"days\")}}",
+                    "5"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "module": "builtin:BasicAggregator",
+        "version": 1,
+        "parameters": {
+          "sourceModuleId": 1
+        },
+        "mapper": {
+          "rowNumber": "{{1.__ROW_NUMBER__}}",
+          "email": "{{1.email}}",
+          "businessName": "{{1.business_name}}",
+          "coldEmailMessage": "{{1.cold_email_message}}"
+        },
+        "metadata": {
+          "designer": {"x": 600, "y": -150},
+          "restore": {}
+        }
+      },
+      {
+        "id": 4,
+        "module": "builtin:BasicIterator",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "array": "{{slice(3.array; 0; 15)}}"
+        },
+        "metadata": {
+          "designer": {"x": 900, "y": -150},
+          "restore": {}
+        }
+      },
+      {
+        "id": 5,
+        "module": "gmail:ActionSendEmail",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "to": "{{4.email}}",
+          "subject": "Quick question about {{4.businessName}}",
+          "content": "{{4.coldEmailMessage}}",
+          "contentType": "text/plain",
+          "attachments": []
+        },
+        "metadata": {
+          "designer": {"x": 1200, "y": -150},
+          "restore": {}
+        }
+      },
+      {
+        "id": 6,
+        "module": "tools:SetVariables",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "variables": [
+            {
+              "name": "send_delay_note",
+              "value": "NOTE: To add a delay between emails, set this scenario to run sequentially and use Make's built-in scenario scheduling. Alternatively, use a webhook pause module or split sends across multiple scenario runs."
+            }
+          ]
+        },
+        "metadata": {
+          "designer": {"x": 1500, "y": -150},
+          "restore": {}
+        }
+      },
+      {
+        "id": 7,
+        "module": "google-sheets:ActionUpdateRow",
+        "version": 2,
+        "parameters": {
+          "includeSubfolders": false
+        },
+        "mapper": {
+          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+          "sheetId": "LEADS",
+          "rowNumber": "{{4.rowNumber}}",
+          "values": {
+            "email_sent": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}"
+          }
+        },
+        "metadata": {
+          "designer": {"x": 1800, "y": -150},
+          "restore": {}
+        }
+      },
+      {
+        "id": 8,
+        "module": "telegram-bot:ActionSendMessage",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID",
+          "text": "📧 Emails sent today: up to 15 cold emails dispatched.\n\n📅 Date: {{formatDate(now; \"YYYY-MM-DD HH:mm\")}}\n\nCheck Google Sheets LEADS tab for details on which businesses were contacted.",
+          "parseMode": "",
+          "replyMarkup": {
+            "type": "none"
+          }
+        },
+        "metadata": {
+          "designer": {"x": 2100, "y": -150},
+          "restore": {}
+        }
+      },
+      {
+        "id": 10,
+        "module": "gmail:ActionSendEmail",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "to": "{{1.email}}",
+          "subject": "Following up — {{1.business_name}}",
+          "content": "Hi there,\n\nI wanted to follow up on my previous message about {{1.business_name}}. I understand you're busy, but I'd love to connect when the time is right.\n\nWould it be worth a quick 10-minute chat this week?\n\nBest regards",
+          "contentType": "text/plain",
+          "attachments": []
+        },
+        "metadata": {
+          "designer": {"x": 600, "y": 150},
+          "restore": {}
+        }
+      },
+      {
+        "id": 11,
+        "module": "google-sheets:ActionUpdateRow",
+        "version": 2,
+        "parameters": {
+          "includeSubfolders": false
+        },
+        "mapper": {
+          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+          "sheetId": "LEADS",
+          "rowNumber": "{{1.__ROW_NUMBER__}}",
+          "values": {
+            "follow_up_sent": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}"
+          }
+        },
+        "metadata": {
+          "designer": {"x": 900, "y": 150},
+          "restore": {}
+        }
+      },
+      {
+        "id": 12,
+        "module": "telegram-bot:ActionSendMessage",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID",
+          "text": "🔁 Follow-up sent to {{1.business_name}}\n📧 Email: {{1.email}}\n📅 Original send: {{1.email_sent}}\n⏱ Days since first contact: {{dateDifference(now; 1.email_sent; \"days\")}}",
+          "parseMode": "",
+          "replyMarkup": {
+            "type": "none"
+          }
+        },
+        "metadata": {
+          "designer": {"x": 1200, "y": 150},
+          "restore": {}
+        }
+      }
+    ],
+    "routes": [
+      {
+        "flow": [
+          {"id": 1},
+          {"id": 2}
+        ]
+      }
+    ],
+    "metadata": {
+      "instant": false,
+      "version": 1,
+      "scenario": {
+        "roundtrips": 1,
+        "maxErrors": 3,
+        "autoCommit": true,
+        "autoCommitTriggerLast": true,
+        "sequential": true,
+        "confidential": false,
+        "dataloss": false,
+        "dlq": false,
+        "freshVariables": false
+      }
+    }
+  },
+  "scheduling": {
+    "type": "indefinitely",
+    "interval": 86400,
+    "time": "10:00",
+    "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+  }
+}

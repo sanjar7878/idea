@@ -1,0 +1,178 @@
+{
+  "name": "01 — Lead Finder",
+  "blueprint": {
+    "modules": [
+      {
+        "id": 1,
+        "module": "http:ActionSendData",
+        "version": 3,
+        "parameters": {
+          "handleErrors": false,
+          "useNewZLibDecompress": true
+        },
+        "mapper": {
+          "url": "https://maps.googleapis.com/maps/api/place/textsearch/json",
+          "serializeUrl": false,
+          "method": "get",
+          "headers": [],
+          "qs": [
+            {"name": "query", "value": "dentist in Manchester UK"},
+            {"name": "key", "value": "REPLACE_YOUR_GOOGLE_PLACES_API_KEY"},
+            {"name": "region", "value": "gb"}
+          ],
+          "bodyType": "raw",
+          "parseResponse": true
+        },
+        "metadata": {
+          "designer": {"x": 0, "y": 0},
+          "restore": {}
+        }
+      },
+      {
+        "id": 2,
+        "module": "builtin:BasicIterator",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "array": "{{1.data.results}}"
+        },
+        "metadata": {
+          "designer": {"x": 300, "y": 0},
+          "restore": {}
+        }
+      },
+      {
+        "id": 3,
+        "module": "tools:SetVariables",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "variables": [
+            {
+              "name": "business_name",
+              "value": "{{2.name}}"
+            },
+            {
+              "name": "address",
+              "value": "{{2.formatted_address}}"
+            },
+            {
+              "name": "rating",
+              "value": "{{2.rating}}"
+            },
+            {
+              "name": "total_reviews",
+              "value": "{{2.user_ratings_total}}"
+            },
+            {
+              "name": "place_id",
+              "value": "{{2.place_id}}"
+            },
+            {
+              "name": "priority",
+              "value": "{{if(2.rating < 4; if(2.user_ratings_total < 20; \"HIGH PRIORITY + URGENT\"; \"HIGH PRIORITY\"); if(2.user_ratings_total < 20; \"URGENT\"; \"NORMAL\"))}}"
+            },
+            {
+              "name": "found_date",
+              "value": "{{formatDate(now; \"YYYY-MM-DD\")}}"
+            }
+          ]
+        },
+        "metadata": {
+          "designer": {"x": 600, "y": 0},
+          "restore": {}
+        }
+      },
+      {
+        "id": 4,
+        "module": "google-sheets:ActionAddRow",
+        "version": 2,
+        "parameters": {
+          "includeSubfolders": false
+        },
+        "mapper": {
+          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+          "sheetId": "LEADS",
+          "values": {
+            "business_name": "{{3.business_name}}",
+            "address": "{{3.address}}",
+            "rating": "{{3.rating}}",
+            "total_reviews": "{{3.total_reviews}}",
+            "priority": "{{3.priority}}",
+            "place_id": "{{3.place_id}}",
+            "found_date": "{{3.found_date}}"
+          }
+        },
+        "metadata": {
+          "designer": {"x": 900, "y": 0},
+          "restore": {}
+        }
+      },
+      {
+        "id": 5,
+        "module": "builtin:BasicAggregator",
+        "version": 1,
+        "parameters": {
+          "sourceModuleId": 2
+        },
+        "mapper": {
+          "rowId": "{{4.rowId}}",
+          "businessName": "{{3.business_name}}"
+        },
+        "metadata": {
+          "designer": {"x": 1200, "y": 0},
+          "restore": {}
+        }
+      },
+      {
+        "id": 6,
+        "module": "telegram-bot:ActionSendMessage",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID",
+          "text": "✅ Lead Finder complete!\n\n📍 Search: dentist in Manchester UK\n📊 Total leads saved: {{5.totalItems}}\n📅 Date: {{formatDate(now; \"YYYY-MM-DD HH:mm\")}}\n\nCheck Google Sheets LEADS tab for details.",
+          "parseMode": "",
+          "replyMarkup": {
+            "type": "none"
+          }
+        },
+        "metadata": {
+          "designer": {"x": 1500, "y": 0},
+          "restore": {}
+        }
+      }
+    ],
+    "routes": [
+      {
+        "flow": [
+          {"id": 1},
+          {"id": 2},
+          {"id": 3},
+          {"id": 4},
+          {"id": 5},
+          {"id": 6}
+        ]
+      }
+    ],
+    "metadata": {
+      "instant": false,
+      "version": 1,
+      "scenario": {
+        "roundtrips": 1,
+        "maxErrors": 3,
+        "autoCommit": true,
+        "autoCommitTriggerLast": true,
+        "sequential": false,
+        "confidential": false,
+        "dataloss": false,
+        "dlq": false,
+        "freshVariables": false
+      }
+    }
+  },
+  "scheduling": {
+    "type": "indefinitely",
+    "interval": 0
+  }
+}
