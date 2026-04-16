@@ -1,31 +1,22 @@
 /**
  * Automatic n8n Workflow Importer
+ * Pre-configured for: sanjarbrz.app.n8n.cloud
  *
- * Imports all 7 workflows into your running n8n instance in one go.
- *
- * HOW TO USE:
- *   1. Make sure n8n is running (run: n8n start)
- *   2. Get your n8n API key (see instructions below)
- *   3. Run: node import-workflows.js YOUR_API_KEY
- *
- * HOW TO GET YOUR N8N API KEY:
- *   - Open http://localhost:5678 in your browser
- *   - Click your user icon (bottom left)
- *   - Click "Settings"
- *   - Click "API" in the left menu
- *   - Click "Create an API Key"
- *   - Copy the key and paste it into the command above
+ * HOW TO USE — just 2 steps:
+ *   1. Download this folder to your computer
+ *   2. Open Command Prompt in this folder and run:
+ *        node import-workflows.js
  */
 
 const fs   = require('fs');
 const path = require('path');
-const http = require('http');
+const https = require('https');
 
-// ─── Config ──────────────────────────────────────────────────────────────────
+// ─── Config (pre-configured for your n8n Cloud) ───────────────────────────────
 
-const N8N_HOST = 'localhost';
-const N8N_PORT = 5678;
-const API_KEY  = process.argv[2];
+const N8N_HOST = 'sanjarbrz.app.n8n.cloud';
+const N8N_PORT = 443;
+const API_KEY  = process.argv[2] || 'o_API8bg3';
 
 const WORKFLOWS = [
   'workflow-1-lead-finder.json',
@@ -54,7 +45,7 @@ function apiRequest(method, endpoint, body) {
       },
     };
 
-    const req = http.request(options, (res) => {
+    const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
@@ -80,42 +71,29 @@ function pad(str, len) {
 
 async function main() {
   console.log('\n================================================');
-  console.log('  n8n Workflow Auto-Importer');
+  console.log('  n8n Cloud Workflow Importer');
+  console.log(`  Target: https://${N8N_HOST}`);
   console.log('================================================\n');
 
-  // Check API key was provided
-  if (!API_KEY) {
-    console.error('❌  No API key provided.\n');
-    console.error('Usage:  node import-workflows.js YOUR_API_KEY\n');
-    console.error('How to get your API key:');
-    console.error('  1. Open http://localhost:5678');
-    console.error('  2. Click your user icon (bottom left)');
-    console.error('  3. Click Settings → API');
-    console.error('  4. Click "Create an API Key"\n');
-    process.exit(1);
-  }
-
-  // Check n8n is reachable
-  console.log('Checking n8n is running...');
+  // Check n8n is reachable and API key works
+  console.log('Connecting to your n8n Cloud...');
   try {
     const ping = await apiRequest('GET', '/workflows?limit=1', null);
     if (ping.status === 401) {
       console.error('❌  API key is invalid or expired.\n');
-      console.error('Please create a new API key in n8n Settings → API\n');
+      console.error('Go to https://sanjarbrz.app.n8n.cloud/settings/api');
+      console.error('Create a new key and run: node import-workflows.js YOUR_NEW_KEY\n');
       process.exit(1);
     }
     if (ping.status !== 200) {
-      throw new Error(`Unexpected status ${ping.status}`);
+      console.error(`❌  Unexpected response: ${ping.status}`);
+      console.error(JSON.stringify(ping.body).slice(0, 200));
+      process.exit(1);
     }
-    console.log('✅  n8n is running and API key is valid.\n');
+    console.log('✅  Connected. API key is valid.\n');
   } catch (err) {
-    if (err.code === 'ECONNREFUSED') {
-      console.error('❌  Cannot connect to n8n at localhost:5678\n');
-      console.error('Make sure n8n is running:');
-      console.error('  Open a new Command Prompt and run:  n8n start\n');
-    } else {
-      console.error('❌  Error connecting to n8n:', err.message);
-    }
+    console.error('❌  Could not reach n8n Cloud:', err.message);
+    console.error('Check your internet connection and try again.\n');
     process.exit(1);
   }
 
@@ -135,14 +113,12 @@ async function main() {
   for (const filename of WORKFLOWS) {
     const filepath = path.join(__dirname, filename);
 
-    // Check file exists
     if (!fs.existsSync(filepath)) {
       console.log(pad(filename, 42) + pad('MISSING', 12) + 'File not found');
       results.push({ filename, status: 'missing' });
       continue;
     }
 
-    // Read and parse the workflow JSON
     let workflow;
     try {
       workflow = JSON.parse(fs.readFileSync(filepath, 'utf8'));
@@ -152,35 +128,31 @@ async function main() {
       continue;
     }
 
-    // Skip if already imported (by name)
     if (existingNames.has(workflow.name)) {
       console.log(pad(workflow.name, 42) + pad('SKIPPED', 12) + 'Already exists');
       results.push({ filename, status: 'skipped' });
       continue;
     }
 
-    // Remove id so n8n assigns a fresh one
     const { id, ...workflowToImport } = workflow;
 
-    // Create the workflow via API
     try {
       const result = await apiRequest('POST', '/workflows', workflowToImport);
       if (result.status === 200 || result.status === 201) {
         const newId = result.body.id || '?';
-        console.log(pad(workflow.name, 42) + pad('IMPORTED', 12) + `id: ${newId}`);
+        console.log(pad(workflow.name, 42) + pad('IMPORTED ✅', 14) + `id: ${newId}`);
         results.push({ filename, status: 'imported', id: newId });
       } else {
         const msg = result.body.message || JSON.stringify(result.body).slice(0, 60);
-        console.log(pad(workflow.name, 42) + pad('FAILED', 12) + msg);
+        console.log(pad(workflow.name, 42) + pad('FAILED ❌', 12) + msg);
         results.push({ filename, status: 'failed', reason: msg });
       }
     } catch (err) {
-      console.log(pad(workflow.name, 42) + pad('ERROR', 12) + err.message);
+      console.log(pad(workflow.name, 42) + pad('ERROR ❌', 12) + err.message);
       results.push({ filename, status: 'error', reason: err.message });
     }
 
-    // Small delay between requests
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 400));
   }
 
   // Summary
@@ -189,19 +161,20 @@ async function main() {
   const failed   = results.filter(r => r.status === 'failed' || r.status === 'error' || r.status === 'missing').length;
 
   console.log('\n' + '─'.repeat(70));
-  console.log(`\n✅  Imported: ${imported}   ⏭  Skipped (already exist): ${skipped}   ❌  Failed: ${failed}\n`);
+  console.log(`\nImported: ${imported}   Skipped (already exist): ${skipped}   Failed: ${failed}\n`);
 
   if (imported > 0) {
-    console.log('🎉  Done! Open http://localhost:5678/workflows to see your workflows.\n');
-    console.log('Next steps:');
-    console.log('  1. Open each workflow and replace the REPLACE_WITH_... placeholder values');
-    console.log('  2. Connect credentials (Google Sheets, Gmail, Telegram) in each node');
-    console.log('  3. Activate workflows 2-7 using the toggle at the top right\n');
+    console.log('🎉  All done! Open your n8n Cloud to see the workflows:');
+    console.log('    https://sanjarbrz.app.n8n.cloud/workflows\n');
+    console.log('Next steps inside n8n:');
+    console.log('  1. Open each workflow');
+    console.log('  2. Replace REPLACE_WITH_... values with your real API keys');
+    console.log('  3. Connect credentials (Google Sheets, Gmail, Telegram)');
+    console.log('  4. Activate workflows 2-7 using the toggle top-right\n');
   }
 
   if (failed > 0) {
-    console.log('Some workflows failed. Check the errors above.');
-    console.log('Most common fix: make sure n8n is fully started before running this script.\n');
+    console.log('Some workflows failed to import. Check errors above.\n');
   }
 }
 
