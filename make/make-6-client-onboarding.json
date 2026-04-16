@@ -1,0 +1,172 @@
+{
+  "name": "06 — New Client Onboarding",
+  "blueprint": {
+    "modules": [
+      {
+        "id": 1,
+        "module": "google-sheets:WatchRows",
+        "version": 2,
+        "parameters": {
+          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+          "sheetId": "CLIENTS",
+          "includeColumnHeaders": true
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 2,
+        "module": "tools:SetVariables",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "variables": [
+            {
+              "name": "client_name",
+              "value": "{{1.client_name}}"
+            },
+            {
+              "name": "business_name",
+              "value": "{{1.business_name}}"
+            },
+            {
+              "name": "client_email",
+              "value": "{{1.email}}"
+            },
+            {
+              "name": "first_report_date",
+              "value": "{{formatDate(addMonths(setDate(now; 1); 1); \"D MMMM YYYY\")}}"
+            }
+          ]
+        },
+        "metadata": {
+          "designer": {
+            "x": 200,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 3,
+        "module": "builtin:BasicRouter",
+        "version": 1,
+        "parameters": {},
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 400,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 4,
+        "module": "gmail:ActionSendEmail",
+        "version": 1,
+        "parameters": {
+          "account": "REPLACE_YOUR_GMAIL_ACCOUNT_ID"
+        },
+        "mapper": {
+          "to": "{{2.client_email}}",
+          "subject": "Welcome to your Reputation Management Service — {{2.business_name}}",
+          "bodyType": "html",
+          "body": "<html><body style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;'><h2 style='color:#2c5282;'>Welcome aboard, {{1.client_name}}! 🎉</h2><p>Thank you for choosing our reputation management service for <strong>{{2.business_name}}</strong>.</p><h3 style='color:#2c5282;'>What happens next:</h3><ul><li>We'll begin monitoring your Google reviews immediately</li><li>You'll receive suggested responses to every new review within hours</li><li>Your first monthly report arrives on <strong>{{2.first_report_date}}</strong></li></ul><p>Kind regards,<br><strong>Your Reputation Management Team</strong></p></body></html>"
+        },
+        "metadata": {
+          "designer": {
+            "x": 600,
+            "y": -100
+          }
+        }
+      },
+      {
+        "id": 5,
+        "module": "telegram-bot:ActionSendMessage",
+        "version": 1,
+        "parameters": {
+          "token": "REPLACE_YOUR_TELEGRAM_BOT_TOKEN",
+          "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID"
+        },
+        "mapper": {
+          "text": "🎉 New client onboarded!\n\n👤 {{1.client_name}}\n🏢 {{1.business_name}}\n📧 {{1.email}}\n💰 £{{1.fee}}/month\n\nWelcome email sent ✅\nFirst report: {{2.first_report_date}}",
+          "parse_mode": "HTML"
+        },
+        "metadata": {
+          "designer": {
+            "x": 800,
+            "y": -100
+          }
+        }
+      },
+      {
+        "id": 6,
+        "module": "telegram-bot:ActionSendMessage",
+        "version": 1,
+        "parameters": {
+          "token": "REPLACE_YOUR_TELEGRAM_BOT_TOKEN",
+          "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID"
+        },
+        "mapper": {
+          "text": "⚠️ New CLIENTS row added but missing required fields!\n\nPlease check: client_name, email, business_name must all be filled in.",
+          "parse_mode": "HTML"
+        },
+        "metadata": {
+          "designer": {
+            "x": 600,
+            "y": 100
+          }
+        }
+      }
+    ],
+    "routes": [
+      {
+        "flow": [
+          {"id": 1},
+          {"id": 2},
+          {"id": 3}
+        ]
+      },
+      {
+        "flow": [
+          {"id": 4},
+          {"id": 5}
+        ],
+        "condition": {
+          "expression": "{{and(notEmpty(1.client_name); notEmpty(1.email); notEmpty(1.business_name))}}"
+        }
+      },
+      {
+        "flow": [
+          {"id": 6}
+        ],
+        "condition": {
+          "expression": "{{or(isEmpty(1.client_name); isEmpty(1.email); isEmpty(1.business_name))}}"
+        }
+      }
+    ],
+    "metadata": {
+      "instant": true,
+      "version": 1,
+      "scenario": {
+        "roundtrips": 1,
+        "maxErrors": 3,
+        "autoCommit": true,
+        "autoCommitTriggerLast": true,
+        "sequential": false,
+        "confidential": false,
+        "dataloss": false,
+        "dlq": false,
+        "freshVariables": false
+      }
+    }
+  },
+  "scheduling": {
+    "type": "indefinitely",
+    "interval": 0
+  }
+}
