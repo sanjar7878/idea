@@ -1,0 +1,324 @@
+{
+  "name": "02 — Message Generator",
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "note1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 100],
+      "parameters": {
+        "content": "## 💬 Message Generator Workflow\n\nRuns every day at 9am.\n\nFor each lead WITHOUT messages, calls Claude AI to generate 4 personalised outreach messages.\n\n**Credentials needed:**\n- Google Sheets OAuth\n- Telegram Bot\n- Anthropic API key (in HTTP nodes)",
+        "height": 260,
+        "width": 400,
+        "color": 5
+      }
+    },
+    {
+      "id": "readLeads",
+      "name": "Read Leads Without Messages",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [450, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "LEADS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      }
+    },
+    {
+      "id": "filterNoMessages",
+      "name": "Filter: No Messages Yet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300],
+      "parameters": {
+        "jsCode": "// Only process leads that don't have messages yet\nconst filtered = items.filter(item => {\n  const email = item.json.email || '';\n  const coldEmail = item.json.cold_email_message || '';\n  const businessName = item.json.business_name || '';\n  // Must have a business name and no cold email message yet\n  return businessName && !coldEmail;\n});\n\nif (filtered.length === 0) {\n  // Return a marker so downstream knows nothing to do\n  return [{ json: { nothing_to_do: true, count: 0 } }];\n}\n\nreturn filtered;"
+      }
+    },
+    {
+      "id": "checkNothingToDo",
+      "name": "Check If Nothing To Do",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [950, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check1",
+              "leftValue": "={{ $json.nothing_to_do }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "nothingToDo",
+      "name": "Nothing To Do - End",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1200, 150],
+      "parameters": {}
+    },
+    {
+      "id": "splitLeads",
+      "name": "Process Each Lead",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1200, 400],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "note2",
+      "name": "Sticky Note 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1450, 100],
+      "parameters": {
+        "content": "## 🤖 Claude AI Generation\n\nFor each lead, we call Claude API to generate 4 messages:\n1. Cold email (formal, <100 words)\n2. LinkedIn DM (<60 words)\n3. Instagram DM (<50 words)\n4. Facebook message (<60 words)\n\nMessages mention business name, city, and actual Google rating.",
+        "height": 220,
+        "width": 380,
+        "color": 4
+      }
+    },
+    {
+      "id": "callClaude",
+      "name": "Generate Messages via Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1450, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "REPLACE_WITH_YOUR_ANTHROPIC_API_KEY"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 1500,
+          "messages": [
+            {
+              "role": "user",
+              "content": "=You are an outreach copywriter. Generate 4 personalised outreach messages for this business:\n\nBusiness Name: {{ $json.business_name }}\nCity: {{ $json.city || $json.address }}\nGoogle Rating: {{ $json.rating }} stars\nTotal Reviews: {{ $json.total_reviews }}\nProfession: {{ $json.profession }}\n\nGenerate exactly these 4 messages. Return ONLY a valid JSON object with these exact keys:\n{\n  \"cold_email\": \"...\",\n  \"linkedin_dm\": \"...\",\n  \"instagram_dm\": \"...\",\n  \"facebook_message\": \"...\"\n}\n\nRules for ALL messages:\n- Mention the business name and city naturally\n- Reference their Google rating of {{ $json.rating }} stars\n- Never mention AI, automation, or software\n- End with a simple yes/no question\n- Sound human, warm and genuine\n\nCold email: Formal tone. Under 100 words. Subject line not needed.\nLinkedIn DM: Professional tone. Under 60 words.\nInstagram DM: Casual friendly tone. Under 50 words.\nFacebook message: Friendly conversational tone. Under 60 words.\n\nReturn ONLY the JSON object, no other text."
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "parseResponse",
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 400],
+      "parameters": {
+        "jsCode": "const leadData = $('Process Each Lead').item.json;\nconst claudeResponse = items[0].json;\n\nlet messages = {};\ntry {\n  const content = claudeResponse.content[0].text;\n  // Extract JSON from response\n  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    messages = JSON.parse(jsonMatch[0]);\n  }\n} catch(e) {\n  messages = {\n    cold_email: 'Error generating message',\n    linkedin_dm: 'Error generating message',\n    instagram_dm: 'Error generating message',\n    facebook_message: 'Error generating message'\n  };\n}\n\nreturn [{\n  json: {\n    ...leadData,\n    cold_email_message: messages.cold_email || '',\n    linkedin_message: messages.linkedin_dm || '',\n    instagram_message: messages.instagram_dm || '',\n    facebook_message: messages.facebook_message || '',\n    messages_generated_date: new Date().toISOString().split('T')[0]\n  }\n}];"
+      }
+    },
+    {
+      "id": "updateSheets",
+      "name": "Update Google Sheets with Messages",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1950, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "LEADS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "business_name": "={{ $json.business_name }}",
+            "cold_email_message": "={{ $json.cold_email_message }}",
+            "linkedin_message": "={{ $json.linkedin_message }}",
+            "instagram_message": "={{ $json.instagram_message }}",
+            "facebook_message": "={{ $json.facebook_message }}"
+          },
+          "matchingColumns": ["business_name"],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "loopBack",
+      "name": "Loop Back",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1950, 550],
+      "parameters": {}
+    },
+    {
+      "id": "completionTelegram",
+      "name": "Send Completion Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1950, 700],
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      },
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "✅ Message Generator Complete!\n\nMessages have been generated for all leads without messages.\n\nCheck your Google Sheets LEADS tab to review them.",
+        "additionalFields": {}
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          { "node": "Read Leads Without Messages", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read Leads Without Messages": {
+      "main": [
+        [
+          { "node": "Filter: No Messages Yet", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filter: No Messages Yet": {
+      "main": [
+        [
+          { "node": "Check If Nothing To Do", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Check If Nothing To Do": {
+      "main": [
+        [
+          { "node": "Nothing To Do - End", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Process Each Lead", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Process Each Lead": {
+      "main": [
+        [
+          { "node": "Generate Messages via Claude", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Send Completion Telegram", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Generate Messages via Claude": {
+      "main": [
+        [
+          { "node": "Parse Claude Response", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          { "node": "Update Google Sheets with Messages", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Update Google Sheets with Messages": {
+      "main": [
+        [
+          { "node": "Process Each Lead", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "wf2",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

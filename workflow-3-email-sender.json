@@ -1,0 +1,323 @@
+{
+  "name": "03 — Email Outreach Sender",
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "note1",
+      "name": "Sticky Note - Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 80],
+      "parameters": {
+        "content": "## 📧 Email Outreach Sender\n\nRuns Mon-Fri at 10am.\n\n- Reads leads with email but no email_sent date\n- Sends max 15 emails per day\n- Waits 3-7 min between each email\n- Marks each lead as sent\n- Checks for follow-up needs after 5 days\n\n**Credentials:** Google Sheets OAuth, Gmail OAuth, Telegram Bot",
+        "height": 230,
+        "width": 420,
+        "color": 3
+      }
+    },
+    {
+      "id": "readLeads",
+      "name": "Read Leads for Email",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [500, 300],
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "LEADS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "filterReady",
+      "name": "Filter: Ready to Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 300],
+      "parameters": {
+        "jsCode": "// Filter leads: has email, has cold_email_message, not yet sent\nconst today = new Date();\nconst readyToSend = [];\nconst needsFollowUp = [];\n\nfor (const item of items) {\n  const d = item.json;\n  const hasEmail = d.email && d.email.includes('@');\n  const hasMessage = d.cold_email_message && d.cold_email_message.length > 10;\n  const notSent = !d.email_sent || d.email_sent === '';\n  const notReplied = !d.email_replied || d.email_replied === '';\n  \n  if (hasEmail && hasMessage && notSent) {\n    readyToSend.push(item);\n  }\n  \n  // Check follow-up: sent 5+ days ago, no reply\n  if (hasEmail && d.email_sent && notReplied) {\n    const sentDate = new Date(d.email_sent);\n    const daysDiff = (today - sentDate) / (1000 * 60 * 60 * 24);\n    if (daysDiff >= 5) {\n      needsFollowUp.push(item);\n    }\n  }\n}\n\n// Combine: send new emails first, then follow-ups\nconst combined = [\n  ...readyToSend.map(i => ({ json: { ...i.json, send_type: 'cold' } })),\n  ...needsFollowUp.map(i => ({ json: { ...i.json, send_type: 'followup' } }))\n];\n\nif (combined.length === 0) {\n  return [{ json: { nothing_to_send: true } }];\n}\n\nreturn combined;"
+      }
+    },
+    {
+      "id": "checkAnything",
+      "name": "Check if Anything to Send",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1000, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.nothing_to_send }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "nothingToSend",
+      "name": "Nothing to Send",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1250, 150],
+      "parameters": {}
+    },
+    {
+      "id": "limitEmails",
+      "name": "Limit to 15 per Day",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 400],
+      "parameters": {
+        "jsCode": "// Limit to maximum 15 emails per day\nconst maxPerDay = 15;\nconst limited = items.slice(0, maxPerDay);\nreturn limited;"
+      }
+    },
+    {
+      "id": "loopLeads",
+      "name": "Loop through Leads",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1500, 400],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "determineContent",
+      "name": "Determine Email Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1750, 400],
+      "parameters": {
+        "jsCode": "const lead = items[0].json;\nconst sendType = lead.send_type || 'cold';\n\nlet subject, body;\n\nif (sendType === 'cold') {\n  subject = `Quick question about ${lead.business_name}`;\n  body = lead.cold_email_message || '';\n} else {\n  // Follow-up email\n  subject = `Following up — ${lead.business_name}`;\n  body = `Hi,\\n\\nI sent you a quick note last week about improving your Google reviews for ${lead.business_name}.\\n\\nJust wanted to check if you had a chance to see it? I've helped several ${lead.profession || 'practices'} in ${lead.city || 'your area'} go from ${lead.rating || '3-4'} stars to consistent 5-star reviews.\\n\\nWould it be worth a quick 10-minute call to explore if this could work for you?\\n\\nBest regards`;\n}\n\nreturn [{\n  json: {\n    ...lead,\n    email_subject: subject,\n    email_body: body\n  }\n}];"
+      }
+    },
+    {
+      "id": "sendGmail",
+      "name": "Send Email via Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2000, 400],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.email_body }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "randomWait",
+      "name": "Random Wait 3-7 Minutes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2250, 400],
+      "parameters": {
+        "jsCode": "// Wait a random amount between 3 and 7 minutes\nconst minMs = 3 * 60 * 1000;\nconst maxMs = 7 * 60 * 1000;\nconst waitMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;\nconst startTime = Date.now();\nawait new Promise(resolve => setTimeout(resolve, waitMs));\nreturn items;"
+      }
+    },
+    {
+      "id": "markSent",
+      "name": "Mark Lead as Sent in Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2500, 400],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "LEADS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "business_name": "={{ $json.business_name }}",
+            "email_sent": "={{ $json.send_type === 'cold' ? new Date().toISOString() : $json.email_sent }}",
+            "followup_sent": "={{ $json.send_type === 'followup' ? new Date().toISOString() : '' }}"
+          },
+          "matchingColumns": ["business_name"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "loopBackEmail",
+      "name": "Loop Back to Next Lead",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2500, 550],
+      "parameters": {}
+    },
+    {
+      "id": "dailySummary",
+      "name": "Send Daily Summary Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [2500, 700],
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "📧 Email Outreach Complete!\n\nToday's emails have been sent.\n\nCheck Google Sheets LEADS tab to see which leads were contacted today.",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          { "node": "Read Leads for Email", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read Leads for Email": {
+      "main": [
+        [
+          { "node": "Filter: Ready to Email", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filter: Ready to Email": {
+      "main": [
+        [
+          { "node": "Check if Anything to Send", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Check if Anything to Send": {
+      "main": [
+        [
+          { "node": "Nothing to Send", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Limit to 15 per Day", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Limit to 15 per Day": {
+      "main": [
+        [
+          { "node": "Loop through Leads", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Loop through Leads": {
+      "main": [
+        [
+          { "node": "Determine Email Content", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Send Daily Summary Telegram", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Determine Email Content": {
+      "main": [
+        [
+          { "node": "Send Email via Gmail", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Send Email via Gmail": {
+      "main": [
+        [
+          { "node": "Random Wait 3-7 Minutes", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Random Wait 3-7 Minutes": {
+      "main": [
+        [
+          { "node": "Mark Lead as Sent in Sheets", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Mark Lead as Sent in Sheets": {
+      "main": [
+        [
+          { "node": "Loop through Leads", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "wf3",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

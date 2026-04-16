@@ -1,0 +1,251 @@
+{
+  "name": "06 — New Client Onboarding",
+  "nodes": [
+    {
+      "id": "note1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 80],
+      "parameters": {
+        "content": "## 🎉 New Client Onboarding\n\nTriggers automatically when you add a new row to the CLIENTS tab.\n\nAutomatically:\n1. Sends welcome email to client\n2. Sends you Telegram confirmation\n3. Logs onboarding timestamp\n\n**Credentials needed:**\n- Google Sheets OAuth\n- Gmail OAuth\n- Telegram Bot",
+        "height": 240,
+        "width": 400,
+        "color": 1
+      }
+    },
+    {
+      "id": "sheetsTrigger",
+      "name": "Google Sheets Trigger",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 4,
+      "position": [250, 300],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CLIENTS",
+          "mode": "name"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "validateClient",
+      "name": "Validate New Client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300],
+      "parameters": {
+        "jsCode": "const client = items[0].json;\n\n// Check required fields\nif (!client.client_name || !client.email || !client.business_name) {\n  return [{ json: { invalid: true, reason: 'Missing required fields: client_name, email, or business_name', data: client } }];\n}\n\n// Calculate first report date (1st of next month)\nconst now = new Date();\nconst firstReportDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);\nconst reportDateStr = firstReportDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });\n\nreturn [{ json: { ...client, invalid: false, first_report_date: reportDateStr, onboarded_at: new Date().toISOString() } }];"
+      }
+    },
+    {
+      "id": "checkValid",
+      "name": "Check Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.invalid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "alertInvalid",
+      "name": "Alert Invalid Client",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1000, 150],
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "=⚠️ New client row added but has missing fields!\n\nReason: {{ $json.reason }}\n\nPlease check the CLIENTS tab and fill in: client_name, email, business_name.",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "sendWelcome",
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1000, 400],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Welcome to your Reputation Management Service — {{ $json.business_name }}",
+        "emailType": "html",
+        "message": "=<html><body style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;'><h2 style='color: #2c5282;'>Welcome aboard, {{ $json.client_name }}! 🎉</h2><p>Thank you for choosing our reputation management service for <strong>{{ $json.business_name }}</strong>. We're excited to help you build a stronger online presence and get more 5-star Google reviews.</p><h3 style='color: #2c5282;'>What happens next:</h3><ul><li>We'll begin monitoring your Google reviews immediately</li><li>You'll receive suggested responses to every new review within hours</li><li>Your first monthly report will arrive on <strong>{{ $json.first_report_date }}</strong></li><li>We'll be in touch if anything needs your attention</li></ul><h3 style='color: #2c5282;'>Your details:</h3><table style='border-collapse: collapse; width: 100%;'><tr><td style='padding: 8px; border: 1px solid #e2e8f0;'><strong>Business:</strong></td><td style='padding: 8px; border: 1px solid #e2e8f0;'>{{ $json.business_name }}</td></tr><tr><td style='padding: 8px; border: 1px solid #e2e8f0;'><strong>Service started:</strong></td><td style='padding: 8px; border: 1px solid #e2e8f0;'>{{ $json.start_date }}</td></tr><tr><td style='padding: 8px; border: 1px solid #e2e8f0;'><strong>First report:</strong></td><td style='padding: 8px; border: 1px solid #e2e8f0;'>{{ $json.first_report_date }}</td></tr></table><p style='margin-top: 24px;'>If you have any questions, simply reply to this email.</p><p>Kind regards,<br><strong>Your Reputation Management Team</strong></p></body></html>",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "telegramOnboard",
+      "name": "Send Me Telegram Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1250, 400],
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "=🎉 New client onboarded!\n\n👤 *{{ $json.client_name }}*\n🏢 {{ $json.business_name }}\n📧 {{ $json.email }}\n💰 £{{ $json.fee }}/month\n📅 Started: {{ $json.start_date }}\n\nWelcome email sent ✅\nFirst report scheduled: {{ $json.first_report_date }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "logOnboarding",
+      "name": "Log Onboarding to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1500, 400],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CLIENTS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client_name": "={{ $json.client_name }}",
+            "onboarded_at": "={{ $json.onboarded_at }}"
+          },
+          "matchingColumns": ["client_name"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate New Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate New Client": {
+      "main": [
+        [
+          {
+            "node": "Check Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Valid": {
+      "main": [
+        [
+          {
+            "node": "Alert Invalid Client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Welcome Email": {
+      "main": [
+        [
+          {
+            "node": "Send Me Telegram Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Me Telegram Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Log Onboarding to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "wf6",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

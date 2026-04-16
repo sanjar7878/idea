@@ -1,0 +1,432 @@
+{
+  "name": "04 — Review Monitor",
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "note1",
+      "name": "Sticky Note - Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 80],
+      "parameters": {
+        "content": "## ⭐ Review Monitor\n\nRuns every 6 hours, 24/7.\n\nFor each paying client:\n1. Checks Google Places for new reviews\n2. Generates Claude AI response (warm for 4-5★, empathetic for 1-3★)\n3. Saves to REVIEWS tab\n4. Sends Telegram alert with review + suggested response\n\n**Credentials:** Google Sheets OAuth, Telegram Bot, Anthropic API key",
+        "height": 240,
+        "width": 420,
+        "color": 6
+      }
+    },
+    {
+      "id": "readClients",
+      "name": "Read Clients List",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [500, 300],
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CLIENTS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "filterActive",
+      "name": "Filter Active Clients",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 300],
+      "parameters": {
+        "jsCode": "// Only process active clients with a Google Place ID\nconst active = items.filter(item => {\n  return item.json.status === 'active' && item.json.google_place_id;\n});\n\nif (active.length === 0) {\n  return [{ json: { no_active_clients: true } }];\n}\n\nreturn active;"
+      }
+    },
+    {
+      "id": "loopClients",
+      "name": "Loop through Clients",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1000, 300],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "fetchReviews",
+      "name": "Fetch Google Reviews",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "https://maps.googleapis.com/maps/api/place/details/json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "place_id", "value": "={{ $json.google_place_id }}" },
+            { "name": "fields", "value": "name,rating,reviews,user_ratings_total" },
+            { "name": "key", "value": "REPLACE_WITH_YOUR_GOOGLE_PLACES_API_KEY" },
+            { "name": "language", "value": "en" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "readProcessed",
+      "name": "Read Already Processed Reviews",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1500, 300],
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "REVIEWS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "findNewReviews",
+      "name": "Find New Reviews",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1750, 300],
+      "parameters": {
+        "jsCode": "const clientItem = $('Loop through Clients').item.json;\nconst apiResponse = $('Fetch Google Reviews').first().json;\nconst existingReviews = items.map(i => i.json);\n\nconst placeDetails = apiResponse.result || {};\nconst googleReviews = placeDetails.reviews || [];\n\n// Build set of already-processed review fingerprints\nconst processedFingerprints = new Set(\n  existingReviews\n    .filter(r => r.client_name === clientItem.client_name)\n    .map(r => r.review_fingerprint || '')\n);\n\n// Identify new reviews\nconst newReviews = googleReviews.filter(review => {\n  const fingerprint = `${review.author_name}_${review.time}_${clientItem.client_name}`;\n  return !processedFingerprints.has(fingerprint);\n});\n\nif (newReviews.length === 0) {\n  return [{ json: { no_new_reviews: true, client_name: clientItem.client_name } }];\n}\n\nreturn newReviews.map(review => ({\n  json: {\n    client_name: clientItem.client_name,\n    business_name: clientItem.business_name,\n    google_place_id: clientItem.google_place_id,\n    reviewer_name: review.author_name,\n    star_rating: review.rating,\n    review_text: review.text || '(No text provided)',\n    review_time: review.time,\n    review_date: new Date(review.time * 1000).toISOString().split('T')[0],\n    review_fingerprint: `${review.author_name}_${review.time}_${clientItem.client_name}`,\n    relative_time: review.relative_time_description || ''\n  }\n}));"
+      }
+    },
+    {
+      "id": "checkNewReviews",
+      "name": "Check if New Reviews Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.no_new_reviews }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "noNewReviews",
+      "name": "No New Reviews",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2250, 150],
+      "parameters": {}
+    },
+    {
+      "id": "loopReviews",
+      "name": "Loop through New Reviews",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [2250, 400],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "generateResponse",
+      "name": "Generate Response via Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2500, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "REPLACE_WITH_YOUR_ANTHROPIC_API_KEY" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 300,
+          "messages": [
+            {
+              "role": "user",
+              "content": "=You are a professional reputation manager for {{ $json.business_name }}, a UK healthcare/professional practice.\n\nWrite a response to this Google review:\n\nReviewer: {{ $json.reviewer_name }}\nStar Rating: {{ $json.star_rating }} out of 5\nReview: {{ $json.review_text }}\n\nRules:\n- If 4-5 stars: Write a warm, grateful response. Under 60 words. Thank them by name. Sound genuine and human.\n- If 1-3 stars: Write a calm, empathetic response. Under 80 words. Acknowledge their concern, apologise for their experience, invite them to call the practice to resolve it. Never be defensive.\n- Never mention AI or automated systems\n- Sign off as 'The Team at {{ $json.business_name }}'\n- Sound like a real human wrote this\n\nReturn ONLY the response text, nothing else."
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "parseReviewResponse",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2750, 400],
+      "parameters": {
+        "jsCode": "const reviewData = $('Loop through New Reviews').item.json;\nconst claudeData = items[0].json;\n\nconst suggestedResponse = claudeData.content?.[0]?.text || 'Error generating response';\n\nreturn [{\n  json: {\n    ...reviewData,\n    suggested_response: suggestedResponse,\n    response_posted: '',\n    platform: 'Google'\n  }\n}];"
+      }
+    },
+    {
+      "id": "saveReview",
+      "name": "Save Review to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [3000, 400],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "REVIEWS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client_name": "={{ $json.client_name }}",
+            "review_date": "={{ $json.review_date }}",
+            "star_rating": "={{ $json.star_rating }}",
+            "review_text": "={{ $json.review_text }}",
+            "suggested_response": "={{ $json.suggested_response }}",
+            "response_posted": "",
+            "platform": "Google",
+            "reviewer_name": "={{ $json.reviewer_name }}",
+            "review_fingerprint": "={{ $json.review_fingerprint }}"
+          },
+          "schema": []
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "telegramReviewAlert",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [3250, 400],
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ '⭐'.repeat($json.star_rating) }}\\n\\n🏢 *' + $json.business_name + '*\\n👤 ' + $json.reviewer_name + ' · ' + $json.star_rating + '/5 stars\\n\\n📝 *Review:*\\n' + $json.review_text + '\\n\\n💬 *Suggested Response (copy & paste):*\\n' + $json.suggested_response + '\\n\\n_Log in to Google Business to post this response._'",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "loopBackReviews",
+      "name": "Loop Back Reviews",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [3250, 550],
+      "parameters": {}
+    },
+    {
+      "id": "loopBackClients",
+      "name": "Loop Back Clients",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [3250, 700],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          { "node": "Read Clients List", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read Clients List": {
+      "main": [
+        [
+          { "node": "Filter Active Clients", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filter Active Clients": {
+      "main": [
+        [
+          { "node": "Loop through Clients", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Loop through Clients": {
+      "main": [
+        [
+          { "node": "Fetch Google Reviews", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Loop Back Clients", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Google Reviews": {
+      "main": [
+        [
+          { "node": "Read Already Processed Reviews", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read Already Processed Reviews": {
+      "main": [
+        [
+          { "node": "Find New Reviews", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Find New Reviews": {
+      "main": [
+        [
+          { "node": "Check if New Reviews Exist", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Check if New Reviews Exist": {
+      "main": [
+        [
+          { "node": "No New Reviews", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Loop through New Reviews", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "No New Reviews": {
+      "main": [
+        [
+          { "node": "Loop through Clients", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Loop through New Reviews": {
+      "main": [
+        [
+          { "node": "Generate Response via Claude", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Loop through Clients", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Generate Response via Claude": {
+      "main": [
+        [
+          { "node": "Parse Response", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Parse Response": {
+      "main": [
+        [
+          { "node": "Save Review to Sheets", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Save Review to Sheets": {
+      "main": [
+        [
+          { "node": "Send Telegram Alert", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Send Telegram Alert": {
+      "main": [
+        [
+          { "node": "Loop through New Reviews", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "wf4",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

@@ -1,0 +1,252 @@
+{
+  "name": "01 — Lead Finder",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {}
+    },
+    {
+      "id": "note1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 100],
+      "parameters": {
+        "content": "## 🔍 Lead Finder Workflow\n\nThis workflow searches Google Places for local UK professionals.\n\n**How to use:**\n1. Edit the 'Set Search Inputs' node below\n2. Enter your city and profession\n3. Click 'Test workflow'\n\n**Credentials needed:**\n- Google Sheets OAuth\n- Telegram Bot\n- Google Places API key (in HTTP node)",
+        "height": 280,
+        "width": 400,
+        "color": 7
+      }
+    },
+    {
+      "id": "setInputs",
+      "name": "Set Search Inputs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [450, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "city",
+              "name": "city",
+              "value": "Manchester",
+              "type": "string"
+            },
+            {
+              "id": "profession",
+              "name": "profession",
+              "value": "dentist",
+              "type": "string"
+            },
+            {
+              "id": "apiKey",
+              "name": "googlePlacesApiKey",
+              "value": "REPLACE_WITH_YOUR_GOOGLE_PLACES_API_KEY",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "searchPlaces",
+      "name": "Search Google Places",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "https://maps.googleapis.com/maps/api/place/textsearch/json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.profession + ' in ' + $json.city + ' UK' }}"
+            },
+            {
+              "name": "key",
+              "value": "={{ $json.googlePlacesApiKey }}"
+            },
+            {
+              "name": "region",
+              "value": "gb"
+            },
+            {
+              "name": "language",
+              "value": "en-GB"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "processResults",
+      "name": "Process Places Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [950, 300],
+      "parameters": {
+        "jsCode": "const input = items[0].json;\nconst city = $('Set Search Inputs').first().json.city;\nconst profession = $('Set Search Inputs').first().json.profession;\nconst places = input.results || [];\n\nconst leads = places.map(place => {\n  const rating = place.rating || 0;\n  const totalReviews = place.user_ratings_total || 0;\n  let priority = 'NORMAL';\n  if (rating < 4.0) priority = 'HIGH PRIORITY';\n  if (totalReviews < 20) priority = priority === 'HIGH PRIORITY' ? 'HIGH PRIORITY + URGENT' : 'URGENT';\n\n  return {\n    business_name: place.name || '',\n    address: place.formatted_address || '',\n    phone: '',\n    website: '',\n    rating: rating,\n    total_reviews: totalReviews,\n    priority: priority,\n    place_id: place.place_id || '',\n    city: city,\n    profession: profession,\n    email: '',\n    email_sent: '',\n    email_replied: '',\n    linkedin_url: '',\n    instagram_url: '',\n    cold_email_message: '',\n    linkedin_message: '',\n    instagram_message: '',\n    facebook_message: '',\n    found_date: new Date().toISOString().split('T')[0]\n  };\n});\n\nreturn leads.map(lead => ({ json: lead }));"
+      }
+    },
+    {
+      "id": "saveToSheets",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1200, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "LEADS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "business_name": "={{ $json.business_name }}",
+            "address": "={{ $json.address }}",
+            "phone": "={{ $json.phone }}",
+            "website": "={{ $json.website }}",
+            "rating": "={{ $json.rating }}",
+            "total_reviews": "={{ $json.total_reviews }}",
+            "priority": "={{ $json.priority }}",
+            "place_id": "={{ $json.place_id }}",
+            "city": "={{ $json.city }}",
+            "profession": "={{ $json.profession }}",
+            "email": "={{ $json.email }}",
+            "email_sent": "={{ $json.email_sent }}",
+            "email_replied": "={{ $json.email_replied }}",
+            "cold_email_message": "",
+            "linkedin_message": "",
+            "instagram_message": "",
+            "facebook_message": "",
+            "found_date": "={{ $json.found_date }}"
+          },
+          "matchingColumns": ["place_id"],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "countResults",
+      "name": "Count Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "parameters": {
+        "jsCode": "const allItems = items;\nconst total = allItems.length;\nconst highPriority = allItems.filter(i => i.json.priority && i.json.priority.includes('HIGH')).length;\nconst urgent = allItems.filter(i => i.json.priority && i.json.priority.includes('URGENT')).length;\nconst city = allItems[0]?.json.city || 'Unknown';\nconst profession = allItems[0]?.json.profession || 'Unknown';\n\nreturn [{\n  json: {\n    total,\n    highPriority,\n    urgent,\n    city,\n    profession,\n    message: `✅ Lead Finder Complete!\\n\\nCity: ${city}\\nProfession: ${profession}\\n\\nTotal leads found: ${total}\\nHigh Priority (< 4.0 stars): ${highPriority}\\nUrgent (< 20 reviews): ${urgent}\\n\\nAll leads saved to Google Sheets LEADS tab.`\n  }\n}];"
+      }
+    },
+    {
+      "id": "telegramSummary",
+      "name": "Send Telegram Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1700, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      },
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "errorHandler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [950, 550],
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      },
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "=❌ Lead Finder Error!\\n\\nSomething went wrong:\\n{{ $json.message || 'Unknown error' }}\\n\\nPlease check your Google Places API key and internet connection.",
+        "additionalFields": {}
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          { "node": "Set Search Inputs", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Set Search Inputs": {
+      "main": [
+        [
+          { "node": "Search Google Places", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Search Google Places": {
+      "main": [
+        [
+          { "node": "Process Places Results", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Process Places Results": {
+      "main": [
+        [
+          { "node": "Save to Google Sheets", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Save to Google Sheets": {
+      "main": [
+        [
+          { "node": "Count Results", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Count Results": {
+      "main": [
+        [
+          { "node": "Send Telegram Summary", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": ""
+  },
+  "id": "wf1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

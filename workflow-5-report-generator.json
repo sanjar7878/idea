@@ -1,0 +1,383 @@
+{
+  "name": "05 — Monthly Report Generator",
+  "nodes": [
+    {
+      "id": "note1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 80],
+      "parameters": {
+        "content": "## 📊 Monthly Report Generator\n\nRuns on the 1st of every month at 9am.\n\nFor each active client:\n1. Reads their reviews from the past 30 days\n2. Uses Claude AI to write a professional HTML report\n3. Emails report directly to client\n4. Sends you a Telegram confirmation\n\n**Credentials needed:**\n- Google Sheets OAuth\n- Gmail OAuth\n- Anthropic API key\n- Telegram Bot",
+        "height": 260,
+        "width": 420,
+        "color": 2
+      }
+    },
+    {
+      "id": "schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 1 * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "readClients",
+      "name": "Read Clients",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [500, 300],
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CLIENTS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "filterActive",
+      "name": "Filter Active Clients",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 300],
+      "parameters": {
+        "jsCode": "const active = items.filter(i => i.json.status === 'active' && i.json.email); return active.length > 0 ? active : [{ json: { no_clients: true } }];"
+      }
+    },
+    {
+      "id": "loopClients",
+      "name": "Loop through Clients",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1000, 300],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "readReviews",
+      "name": "Read Client Reviews",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1250, 300],
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "REVIEWS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "calcReportData",
+      "name": "Calculate Report Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 300],
+      "parameters": {
+        "jsCode": "const client = $('Loop through Clients').item.json;\nconst allReviews = items.map(i => i.json);\nconst today = new Date();\nconst thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);\nconst sixtyDaysAgo = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000);\n\n// Filter this client's reviews\nconst clientReviews = allReviews.filter(r => r.client_name === client.client_name);\n\n// Last 30 days\nconst thisMonth = clientReviews.filter(r => {\n  if (!r.review_date) return false;\n  const d = new Date(r.review_date);\n  return d >= thirtyDaysAgo;\n});\n\n// Previous 30 days\nconst lastMonth = clientReviews.filter(r => {\n  if (!r.review_date) return false;\n  const d = new Date(r.review_date);\n  return d >= sixtyDaysAgo && d < thirtyDaysAgo;\n});\n\nconst calcAvg = (reviews) => {\n  if (reviews.length === 0) return 0;\n  const sum = reviews.reduce((acc, r) => acc + (parseFloat(r.star_rating) || 0), 0);\n  return (sum / reviews.length).toFixed(1);\n};\n\nconst thisMonthAvg = calcAvg(thisMonth);\nconst lastMonthAvg = calcAvg(lastMonth);\nconst diff = parseFloat(thisMonthAvg) - parseFloat(lastMonthAvg);\nlet trend = 'Stable';\nif (diff > 0.1) trend = 'Improving';\nif (diff < -0.1) trend = 'Declining';\n\n// Best review this month\nconst fiveStars = thisMonth.filter(r => parseInt(r.star_rating) === 5);\nconst bestReview = fiveStars.length > 0 ? fiveStars[0].review_text : (thisMonth.length > 0 ? thisMonth[0].review_text : 'No reviews this month');\n\n// Responded to\nconst responded = thisMonth.filter(r => r.response_posted && r.response_posted !== '').length;\n\nreturn [{\n  json: {\n    client_name: client.client_name,\n    business_name: client.business_name,\n    client_email: client.email,\n    fee: client.fee,\n    total_new_reviews: thisMonth.length,\n    this_month_avg: thisMonthAvg,\n    last_month_avg: lastMonthAvg,\n    trend: trend,\n    reviews_responded: responded,\n    best_review: bestReview,\n    report_month: today.toLocaleString('en-GB', { month: 'long', year: 'numeric' }),\n    all_reviews_this_month: thisMonth\n  }\n}];"
+      }
+    },
+    {
+      "id": "generateReport",
+      "name": "Generate HTML Report via Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1750, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "REPLACE_WITH_YOUR_ANTHROPIC_API_KEY"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 3000,
+          "messages": [
+            {
+              "role": "user",
+              "content": "=Generate a professional monthly reputation report as clean HTML for:\n\nBusiness: {{ $json.business_name }}\nMonth: {{ $json.report_month }}\nNew Reviews This Month: {{ $json.total_new_reviews }}\nAverage Rating This Month: {{ $json.this_month_avg }} stars\nAverage Rating Last Month: {{ $json.last_month_avg }} stars\nRating Trend: {{ $json.trend }}\nReviews Responded To: {{ $json.reviews_responded }}\nBest Review This Month: {{ $json.best_review }}\n\nCreate a complete HTML email with:\n1. Professional header with business name and month\n2. Summary statistics in a clean table/grid\n3. Rating trend section (show improving/stable/declining clearly)\n4. Best review quoted in a styled blockquote\n5. Exactly 3 specific, actionable recommendations for next month\n6. Professional footer\n\nUse clean inline CSS. Make it look premium. Use UK spelling. Address the client directly. Do NOT mention AI. Sign off from their 'Reputation Management Team'.\n\nReturn ONLY the HTML, no other text."
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "parseReportHTML",
+      "name": "Parse Report HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300],
+      "parameters": {
+        "jsCode": "const reportData = $('Calculate Report Data').first().json;\nconst claudeData = items[0].json;\nconst htmlReport = claudeData.content?.[0]?.text || '<p>Error generating report</p>';\n\nreturn [{\n  json: {\n    ...reportData,\n    html_report: htmlReport\n  }\n}];"
+      }
+    },
+    {
+      "id": "sendToClient",
+      "name": "Send Report to Client",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2250, 300],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $json.client_email }}",
+        "subject": "={{ 'Your Reputation Report — ' + $json.report_month + ' | ' + $json.business_name }}",
+        "emailType": "html",
+        "message": "={{ $json.html_report }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "telegramConfirm",
+      "name": "Send Telegram Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [2500, 300],
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "=📊 Monthly report sent!\n\n🏢 *{{ $json.business_name }}*\n📧 Sent to: {{ $json.client_email }}\n📅 Period: {{ $json.report_month }}\n\n📈 Stats:\n• New reviews: {{ $json.total_new_reviews }}\n• Avg rating: {{ $json.this_month_avg }}★\n• Trend: {{ $json.trend }}\n• Responded to: {{ $json.reviews_responded }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "loopBackReport",
+      "name": "Loop Back",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2500, 450],
+      "parameters": {}
+    },
+    {
+      "id": "allReportsDone",
+      "name": "All Reports Done",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [2500, 600],
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "✅ All monthly reports sent! Check your sent emails to confirm delivery.",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Clients": {
+      "main": [
+        [
+          {
+            "node": "Filter Active Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Active Clients": {
+      "main": [
+        [
+          {
+            "node": "Loop through Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop through Clients": {
+      "main": [
+        [
+          {
+            "node": "Read Client Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "All Reports Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Client Reviews": {
+      "main": [
+        [
+          {
+            "node": "Calculate Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Report Data": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report via Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Report via Claude": {
+      "main": [
+        [
+          {
+            "node": "Parse Report HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Report HTML": {
+      "main": [
+        [
+          {
+            "node": "Send Report to Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Report to Client": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Back": {
+      "main": [
+        [
+          {
+            "node": "Loop through Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "wf5",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

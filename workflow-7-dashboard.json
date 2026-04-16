@@ -1,0 +1,243 @@
+{
+  "name": "07 — Dashboard Data Updater",
+  "nodes": [
+    {
+      "id": "note1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 80],
+      "parameters": {
+        "content": "## 📈 Dashboard Data Updater\n\nRuns every hour automatically.\n\nCalculates and writes to DASHBOARD tab:\n- Total leads\n- Emails sent this week\n- Total paying clients\n- Monthly revenue estimate\n- Reviews responded this week\n- Last updated timestamp\n\n**Credentials needed:**\n- Google Sheets OAuth",
+        "height": 250,
+        "width": 400,
+        "color": 7
+      }
+    },
+    {
+      "id": "schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "readLeads",
+      "name": "Read Leads Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [500, 200],
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "LEADS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "readClients",
+      "name": "Read Clients Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [500, 400],
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CLIENTS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "readReviews",
+      "name": "Read Reviews Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [500, 600],
+      "parameters": {
+        "operation": "readRows",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "REVIEWS",
+          "mode": "name"
+        },
+        "filters": {},
+        "options": {
+          "returnAllColumns": true
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "mergeData",
+      "name": "Merge All Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 400],
+      "parameters": {
+        "jsCode": "// Get data from all three sheets\n// Since nodes run sequentially, we access them by name\nconst leads = $('Read Leads Sheet').all().map(i => i.json);\nconst clients = $('Read Clients Sheet').all().map(i => i.json);\nconst reviews = $('Read Reviews Sheet').all().map(i => i.json);\n\n// Calculate metrics\nconst totalLeads = leads.length;\n\n// Emails sent this week\nconst oneWeekAgo = new Date();\noneWeekAgo.setDate(oneWeekAgo.getDate() - 7);\nconst emailsSentThisWeek = leads.filter(l => {\n  if (!l.email_sent) return false;\n  const d = new Date(l.email_sent);\n  return d >= oneWeekAgo;\n}).length;\n\n// Active clients\nconst activeClients = clients.filter(c => c.status === 'active');\nconst totalClients = activeClients.length;\n\n// Monthly revenue\nconst avgFee = 275; // Default average fee £275\nconst totalFees = activeClients.reduce((sum, c) => sum + (parseFloat(c.fee) || avgFee), 0);\nconst monthlyRevenue = totalFees;\n\n// Reviews responded this week\nconst reviewsThisWeek = reviews.filter(r => {\n  if (!r.review_date) return false;\n  const d = new Date(r.review_date);\n  return d >= oneWeekAgo;\n});\nconst reviewsRespondedThisWeek = reviewsThisWeek.filter(r => r.response_posted && r.response_posted !== '').length;\nconst newReviewsThisWeek = reviewsThisWeek.length;\n\nreturn [{\n  json: {\n    total_leads: totalLeads,\n    emails_sent_this_week: emailsSentThisWeek,\n    total_clients: totalClients,\n    monthly_revenue: monthlyRevenue.toFixed(2),\n    reviews_responded_this_week: reviewsRespondedThisWeek,\n    new_reviews_this_week: newReviewsThisWeek,\n    last_updated: new Date().toLocaleString('en-GB')\n  }\n}];"
+      }
+    },
+    {
+      "id": "updateDashboard",
+      "name": "Update Dashboard Tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1000, 400],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "DASHBOARD",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric": "CURRENT",
+            "total_leads": "={{ $json.total_leads }}",
+            "emails_sent_this_week": "={{ $json.emails_sent_this_week }}",
+            "total_clients": "={{ $json.total_clients }}",
+            "monthly_revenue": "={{ '£' + $json.monthly_revenue }}",
+            "reviews_responded_this_week": "={{ $json.reviews_responded_this_week }}",
+            "new_reviews_this_week": "={{ $json.new_reviews_this_week }}",
+            "last_updated": "={{ $json.last_updated }}"
+          },
+          "matchingColumns": ["metric"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Leads Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Leads Sheet": {
+      "main": [
+        [
+          {
+            "node": "Read Clients Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Clients Sheet": {
+      "main": [
+        [
+          {
+            "node": "Read Reviews Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Reviews Sheet": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Data": {
+      "main": [
+        [
+          {
+            "node": "Update Dashboard Tab",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "wf7",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
