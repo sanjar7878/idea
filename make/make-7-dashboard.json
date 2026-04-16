@@ -1,151 +1,154 @@
 {
-  "name": "07 — Dashboard Updater",
-  "blueprint": {
-    "modules": [
-      {
-        "id": 1,
-        "module": "google-sheets:SearchRows",
-        "version": 2,
-        "parameters": {
-          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
-          "sheetId": "LEADS",
-          "includeColumnHeaders": true
-        },
-        "mapper": {},
-        "metadata": {
-          "designer": {
-            "x": 0,
-            "y": 0
-          }
-        }
+  "modules": [
+    {
+      "id": 1,
+      "module": "google-sheets:SearchRows",
+      "version": 2,
+      "parameters": {
+        "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+        "sheetId": "LEADS",
+        "includeColumnHeaders": true
       },
-      {
-        "id": 2,
-        "module": "google-sheets:SearchRows",
-        "version": 2,
-        "parameters": {
-          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
-          "sheetId": "CLIENTS",
-          "includeColumnHeaders": true
-        },
-        "mapper": {},
-        "metadata": {
-          "designer": {
-            "x": 200,
-            "y": 0
-          }
-        }
-      },
-      {
-        "id": 3,
-        "module": "google-sheets:SearchRows",
-        "version": 2,
-        "parameters": {
-          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
-          "sheetId": "REVIEWS",
-          "includeColumnHeaders": true
-        },
-        "mapper": {},
-        "metadata": {
-          "designer": {
-            "x": 400,
-            "y": 0
-          }
-        }
-      },
-      {
-        "id": 4,
-        "module": "tools:SetVariables",
-        "version": 1,
-        "parameters": {},
-        "mapper": {
-          "variables": [
-            {
-              "name": "total_leads",
-              "value": "{{length(1.business_name)}}"
-            },
-            {
-              "name": "active_clients",
-              "value": "{{length(filter(2.__IMTARRAY__; \"status\"; \"active\"))}}"
-            },
-            {
-              "name": "monthly_revenue",
-              "value": "{{sum(map(filter(2.__IMTARRAY__; \"status\"; \"active\"); \"fee\"))}}"
-            },
-            {
-              "name": "total_reviews",
-              "value": "{{length(3.review_text)}}"
-            },
-            {
-              "name": "last_updated",
-              "value": "{{formatDate(now; \"DD/MM/YYYY HH:mm\")}}"
-            }
-          ]
-        },
-        "metadata": {
-          "designer": {
-            "x": 600,
-            "y": 0
-          }
-        }
-      },
-      {
-        "id": 5,
-        "module": "google-sheets:ActionUpdateRow",
-        "version": 2,
-        "parameters": {
-          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
-          "sheetId": "DASHBOARD",
-          "includeColumnHeaders": true
-        },
-        "mapper": {
-          "rowNumber": "2",
-          "values": {
-            "metric": "CURRENT",
-            "last_updated": "{{4.last_updated}}",
-            "total_leads": "{{4.total_leads}}",
-            "total_clients": "{{4.active_clients}}",
-            "monthly_revenue": "£{{4.monthly_revenue}}",
-            "total_reviews": "{{4.total_reviews}}"
-          }
-        },
-        "metadata": {
-          "designer": {
-            "x": 800,
-            "y": 0
-          }
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
         }
       }
-    ],
-    "routes": [
-      {
-        "flow": [
-          {"id": 1},
-          {"id": 2},
-          {"id": 3},
-          {"id": 4},
-          {"id": 5}
-        ]
+    },
+    {
+      "id": 2,
+      "module": "google-sheets:SearchRows",
+      "version": 2,
+      "parameters": {
+        "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+        "sheetId": "CLIENTS",
+        "includeColumnHeaders": true
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 200,
+          "y": 0
+        }
       }
-    ],
-    "metadata": {
-      "instant": false,
+    },
+    {
+      "id": 3,
+      "module": "google-sheets:SearchRows",
+      "version": 2,
+      "parameters": {
+        "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+        "sheetId": "REVIEWS",
+        "includeColumnHeaders": true
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 400,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 4,
+      "module": "tools:SetVariables",
       "version": 1,
-      "scenario": {
-        "roundtrips": 1,
-        "maxErrors": 3,
-        "autoCommit": true,
-        "autoCommitTriggerLast": true,
-        "sequential": false,
-        "confidential": false,
-        "dataloss": false,
-        "dlq": false,
-        "freshVariables": false
+      "parameters": {},
+      "mapper": {
+        "variables": [
+          {
+            "name": "total_leads",
+            "value": "{{length(1.business_name)}}"
+          },
+          {
+            "name": "active_clients",
+            "value": "{{length(filter(2.__IMTARRAY__; \"status\"; \"active\"))}}"
+          },
+          {
+            "name": "monthly_revenue",
+            "value": "{{sum(map(filter(2.__IMTARRAY__; \"status\"; \"active\"); \"fee\"))}}"
+          },
+          {
+            "name": "total_reviews",
+            "value": "{{length(3.review_text)}}"
+          },
+          {
+            "name": "last_updated",
+            "value": "{{formatDate(now; \"DD/MM/YYYY HH:mm\")}}"
+          }
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 5,
+      "module": "google-sheets:ActionUpdateRow",
+      "version": 2,
+      "parameters": {
+        "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+        "sheetId": "DASHBOARD",
+        "includeColumnHeaders": true
+      },
+      "mapper": {
+        "rowNumber": "2",
+        "values": {
+          "metric": "CURRENT",
+          "last_updated": "{{4.last_updated}}",
+          "total_leads": "{{4.total_leads}}",
+          "total_clients": "{{4.active_clients}}",
+          "monthly_revenue": "£{{4.monthly_revenue}}",
+          "total_reviews": "{{4.total_reviews}}"
+        }
+      },
+      "metadata": {
+        "designer": {
+          "x": 800,
+          "y": 0
+        }
       }
     }
-  },
-  "scheduling": {
-    "type": "indefinitely",
-    "interval": 3600
+  ],
+  "routes": [
+    {
+      "flow": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        },
+        {
+          "id": 3
+        },
+        {
+          "id": 4
+        },
+        {
+          "id": 5
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    }
   }
 }

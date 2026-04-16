@@ -1,184 +1,217 @@
 {
-  "name": "02 — Message Generator",
-  "blueprint": {
-    "modules": [
-      {
-        "id": 1,
-        "module": "google-sheets:SearchRows",
-        "version": 2,
-        "parameters": {
-          "includeSubfolders": false
-        },
-        "mapper": {
-          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
-          "sheetId": "LEADS",
-          "includeColumnHeaders": true
-        },
-        "metadata": {
-          "designer": {"x": 0, "y": 0},
-          "restore": {}
-        }
+  "modules": [
+    {
+      "id": 1,
+      "module": "google-sheets:SearchRows",
+      "version": 2,
+      "parameters": {
+        "includeSubfolders": false
       },
-      {
-        "id": 2,
-        "module": "builtin:BasicRouter",
-        "version": 1,
-        "parameters": {},
-        "mapper": null,
-        "metadata": {
-          "designer": {"x": 300, "y": 0},
-          "restore": {}
+      "mapper": {
+        "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+        "sheetId": "LEADS",
+        "includeColumnHeaders": true
+      },
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
         },
-        "routes": [
-          {
-            "flow": [],
-            "label": "Route 1 — Already has messages (skip)",
-            "condition": {
-              "operator": "AND",
-              "operands": [
-                {
-                  "operator": "notEqual",
-                  "operands": [
-                    "{{1.cold_email_message}}",
-                    ""
-                  ]
-                }
-              ]
+        "restore": {}
+      }
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": null,
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        },
+        "restore": {}
+      },
+      "routes": [
+        {
+          "flow": [],
+          "label": "Route 1 — Already has messages (skip)",
+          "condition": {
+            "operator": "AND",
+            "operands": [
+              {
+                "operator": "notEqual",
+                "operands": [
+                  "{{1.cold_email_message}}",
+                  ""
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "flow": [
+            {
+              "id": 3
+            },
+            {
+              "id": 4
+            },
+            {
+              "id": 5
+            },
+            {
+              "id": 6
+            },
+            {
+              "id": 7
             }
+          ],
+          "label": "Route 2 — No messages yet (process)",
+          "condition": {
+            "operator": "AND",
+            "operands": [
+              {
+                "operator": "equal",
+                "operands": [
+                  "{{1.cold_email_message}}",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDecompress": true
+      },
+      "mapper": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "serializeUrl": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "x-api-key",
+            "value": "REPLACE_YOUR_ANTHROPIC_API_KEY"
           },
           {
-            "flow": [
-              {"id": 3},
-              {"id": 4},
-              {"id": 5},
-              {"id": 6},
-              {"id": 7}
-            ],
-            "label": "Route 2 — No messages yet (process)",
-            "condition": {
-              "operator": "AND",
-              "operands": [
-                {
-                  "operator": "equal",
-                  "operands": [
-                    "{{1.cold_email_message}}",
-                    ""
-                  ]
-                }
-              ]
-            }
+            "name": "anthropic-version",
+            "value": "2023-06-01"
+          },
+          {
+            "name": "content-type",
+            "value": "application/json"
           }
-        ]
+        ],
+        "bodyType": "raw",
+        "contentType": "json",
+        "body": "{\"model\":\"claude-3-5-sonnet-20241022\",\"max_tokens\":1500,\"messages\":[{\"role\":\"user\",\"content\":\"Generate 4 personalised outreach messages for: Business: {{1.business_name}}, City: {{1.city}}, Rating: {{1.rating}} stars. Return ONLY valid JSON with keys: cold_email, linkedin_dm, instagram_dm, facebook_message. Rules: mention business name and rating, never mention AI, end with yes/no question.\"}]}",
+        "parseResponse": true
       },
-      {
-        "id": 3,
-        "module": "http:ActionSendData",
-        "version": 3,
-        "parameters": {
-          "handleErrors": false,
-          "useNewZLibDecompress": true
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
         },
-        "mapper": {
-          "url": "https://api.anthropic.com/v1/messages",
-          "serializeUrl": false,
-          "method": "post",
-          "headers": [
-            {"name": "x-api-key", "value": "REPLACE_YOUR_ANTHROPIC_API_KEY"},
-            {"name": "anthropic-version", "value": "2023-06-01"},
-            {"name": "content-type", "value": "application/json"}
-          ],
-          "bodyType": "raw",
-          "contentType": "json",
-          "body": "{\"model\":\"claude-3-5-sonnet-20241022\",\"max_tokens\":1500,\"messages\":[{\"role\":\"user\",\"content\":\"Generate 4 personalised outreach messages for: Business: {{1.business_name}}, City: {{1.city}}, Rating: {{1.rating}} stars. Return ONLY valid JSON with keys: cold_email, linkedin_dm, instagram_dm, facebook_message. Rules: mention business name and rating, never mention AI, end with yes/no question.\"}]}",
-          "parseResponse": true
-        },
-        "metadata": {
-          "designer": {"x": 600, "y": 0},
-          "restore": {}
-        }
-      },
-      {
-        "id": 4,
-        "module": "tools:JsonParseTransformer",
-        "version": 1,
-        "parameters": {},
-        "mapper": {
-          "input": "{{3.data.content[].text}}"
-        },
-        "metadata": {
-          "designer": {"x": 900, "y": 0},
-          "restore": {}
-        }
-      },
-      {
-        "id": 5,
-        "module": "google-sheets:ActionUpdateRow",
-        "version": 2,
-        "parameters": {
-          "includeSubfolders": false
-        },
-        "mapper": {
-          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
-          "sheetId": "LEADS",
-          "rowNumber": "{{1.__ROW_NUMBER__}}",
-          "values": {
-            "cold_email_message": "{{4.cold_email}}",
-            "linkedin_message": "{{4.linkedin_dm}}",
-            "instagram_message": "{{4.instagram_dm}}",
-            "facebook_message": "{{4.facebook_message}}"
-          }
-        },
-        "metadata": {
-          "designer": {"x": 1200, "y": 0},
-          "restore": {}
-        }
-      },
-      {
-        "id": 6,
-        "module": "telegram-bot:ActionSendMessage",
-        "version": 1,
-        "parameters": {},
-        "mapper": {
-          "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID",
-          "text": "✅ Messages generated for {{1.business_name}}\n\n📍 Business: {{1.business_name}}\n⭐ Rating: {{1.rating}}\n📅 {{formatDate(now; \"YYYY-MM-DD HH:mm\")}}\n\nAll 4 message types saved to Google Sheets.",
-          "parseMode": "",
-          "replyMarkup": {
-            "type": "none"
-          }
-        },
-        "metadata": {
-          "designer": {"x": 1500, "y": 0},
-          "restore": {}
-        }
+        "restore": {}
       }
-    ],
-    "routes": [
-      {
-        "flow": [
-          {"id": 1},
-          {"id": 2}
-        ]
-      }
-    ],
-    "metadata": {
-      "instant": false,
+    },
+    {
+      "id": 4,
+      "module": "tools:JsonParseTransformer",
       "version": 1,
-      "scenario": {
-        "roundtrips": 1,
-        "maxErrors": 3,
-        "autoCommit": true,
-        "autoCommitTriggerLast": true,
-        "sequential": false,
-        "confidential": false,
-        "dataloss": false,
-        "dlq": false,
-        "freshVariables": false
+      "parameters": {},
+      "mapper": {
+        "input": "{{3.data.content[].text}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 900,
+          "y": 0
+        },
+        "restore": {}
+      }
+    },
+    {
+      "id": 5,
+      "module": "google-sheets:ActionUpdateRow",
+      "version": 2,
+      "parameters": {
+        "includeSubfolders": false
+      },
+      "mapper": {
+        "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+        "sheetId": "LEADS",
+        "rowNumber": "{{1.__ROW_NUMBER__}}",
+        "values": {
+          "cold_email_message": "{{4.cold_email}}",
+          "linkedin_message": "{{4.linkedin_dm}}",
+          "instagram_message": "{{4.instagram_dm}}",
+          "facebook_message": "{{4.facebook_message}}"
+        }
+      },
+      "metadata": {
+        "designer": {
+          "x": 1200,
+          "y": 0
+        },
+        "restore": {}
+      }
+    },
+    {
+      "id": 6,
+      "module": "telegram-bot:ActionSendMessage",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID",
+        "text": "✅ Messages generated for {{1.business_name}}\n\n📍 Business: {{1.business_name}}\n⭐ Rating: {{1.rating}}\n📅 {{formatDate(now; \"YYYY-MM-DD HH:mm\")}}\n\nAll 4 message types saved to Google Sheets.",
+        "parseMode": "",
+        "replyMarkup": {
+          "type": "none"
+        }
+      },
+      "metadata": {
+        "designer": {
+          "x": 1500,
+          "y": 0
+        },
+        "restore": {}
       }
     }
-  },
-  "scheduling": {
-    "type": "indefinitely",
-    "interval": 86400,
-    "time": "09:00"
+  ],
+  "routes": [
+    {
+      "flow": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    }
   }
 }

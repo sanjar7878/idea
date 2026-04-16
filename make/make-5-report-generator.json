@@ -1,209 +1,216 @@
 {
-  "name": "05 — Monthly Report Generator",
-  "blueprint": {
-    "modules": [
-      {
-        "id": 1,
-        "module": "google-sheets:SearchRows",
-        "version": 2,
-        "parameters": {
-          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
-          "sheetId": "CLIENTS",
-          "includeColumnHeaders": true
-        },
-        "mapper": {},
-        "metadata": {
-          "designer": {
-            "x": 0,
-            "y": 0
-          }
-        }
+  "modules": [
+    {
+      "id": 1,
+      "module": "google-sheets:SearchRows",
+      "version": 2,
+      "parameters": {
+        "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+        "sheetId": "CLIENTS",
+        "includeColumnHeaders": true
       },
-      {
-        "id": 2,
-        "module": "builtin:BasicRouter",
-        "version": 1,
-        "parameters": {},
-        "mapper": {},
-        "metadata": {
-          "designer": {
-            "x": 200,
-            "y": 0
-          }
-        }
-      },
-      {
-        "id": 3,
-        "module": "google-sheets:SearchRows",
-        "version": 2,
-        "parameters": {
-          "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
-          "sheetId": "REVIEWS",
-          "includeColumnHeaders": true
-        },
-        "mapper": {
-          "filter": "{{1.client_name}}",
-          "filterField": "client_name"
-        },
-        "metadata": {
-          "designer": {
-            "x": 400,
-            "y": -100
-          }
-        }
-      },
-      {
-        "id": 4,
-        "module": "tools:SetVariables",
-        "version": 1,
-        "parameters": {},
-        "mapper": {
-          "variables": [
-            {
-              "name": "client_name",
-              "value": "{{1.client_name}}"
-            },
-            {
-              "name": "business_name",
-              "value": "{{1.business_name}}"
-            },
-            {
-              "name": "client_email",
-              "value": "{{1.email}}"
-            },
-            {
-              "name": "report_month",
-              "value": "{{formatDate(now; \"MMMM YYYY\")}}"
-            },
-            {
-              "name": "total_reviews",
-              "value": "{{length(3.review_text)}}"
-            },
-            {
-              "name": "avg_rating",
-              "value": "{{average(3.star_rating)}}"
-            }
-          ]
-        },
-        "metadata": {
-          "designer": {
-            "x": 600,
-            "y": -100
-          }
-        }
-      },
-      {
-        "id": 5,
-        "module": "http:ActionSendData",
-        "version": 3,
-        "parameters": {
-          "handleErrors": true
-        },
-        "mapper": {
-          "url": "https://api.anthropic.com/v1/messages",
-          "method": "post",
-          "headers": [
-            {
-              "name": "x-api-key",
-              "value": "REPLACE_YOUR_ANTHROPIC_API_KEY"
-            },
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
-          ],
-          "body": "{\"model\":\"claude-3-5-sonnet-20241022\",\"max_tokens\":2000,\"messages\":[{\"role\":\"user\",\"content\":\"Generate a professional monthly reputation report as clean HTML for: Business: {{4.business_name}}, Month: {{4.report_month}}, New Reviews: {{4.total_reviews}}, Avg Rating: {{4.avg_rating}} stars. Include: professional header, stats table, rating trend, best review quoted, exactly 3 specific recommendations. Use inline CSS, UK spelling, sign off as Reputation Management Team. Return ONLY HTML.\"}]}",
-          "parseResponse": true
-        },
-        "metadata": {
-          "designer": {
-            "x": 800,
-            "y": -100
-          }
-        }
-      },
-      {
-        "id": 6,
-        "module": "gmail:ActionSendEmail",
-        "version": 1,
-        "parameters": {
-          "account": "REPLACE_YOUR_GMAIL_ACCOUNT_ID"
-        },
-        "mapper": {
-          "to": "{{4.client_email}}",
-          "subject": "Your Reputation Report — {{4.report_month}} | {{4.business_name}}",
-          "bodyType": "html",
-          "body": "{{5.data.content[].text}}"
-        },
-        "metadata": {
-          "designer": {
-            "x": 1000,
-            "y": -100
-          }
-        }
-      },
-      {
-        "id": 7,
-        "module": "telegram-bot:ActionSendMessage",
-        "version": 1,
-        "parameters": {
-          "token": "REPLACE_YOUR_TELEGRAM_BOT_TOKEN",
-          "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID"
-        },
-        "mapper": {
-          "text": "📊 Monthly report sent!\n\n🏢 {{4.business_name}}\n📧 {{4.client_email}}\n📅 {{4.report_month}}\n✅ Delivered",
-          "parse_mode": "HTML"
-        },
-        "metadata": {
-          "designer": {
-            "x": 1200,
-            "y": -100
-          }
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
         }
       }
-    ],
-    "routes": [
-      {
-        "flow": [
-          {"id": 1},
-          {"id": 2}
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 200,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "google-sheets:SearchRows",
+      "version": 2,
+      "parameters": {
+        "spreadsheetId": "REPLACE_YOUR_SPREADSHEET_ID",
+        "sheetId": "REVIEWS",
+        "includeColumnHeaders": true
+      },
+      "mapper": {
+        "filter": "{{1.client_name}}",
+        "filterField": "client_name"
+      },
+      "metadata": {
+        "designer": {
+          "x": 400,
+          "y": -100
+        }
+      }
+    },
+    {
+      "id": 4,
+      "module": "tools:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "variables": [
+          {
+            "name": "client_name",
+            "value": "{{1.client_name}}"
+          },
+          {
+            "name": "business_name",
+            "value": "{{1.business_name}}"
+          },
+          {
+            "name": "client_email",
+            "value": "{{1.email}}"
+          },
+          {
+            "name": "report_month",
+            "value": "{{formatDate(now; \"MMMM YYYY\")}}"
+          },
+          {
+            "name": "total_reviews",
+            "value": "{{length(3.review_text)}}"
+          },
+          {
+            "name": "avg_rating",
+            "value": "{{average(3.star_rating)}}"
+          }
         ]
       },
-      {
-        "flow": [
-          {"id": 3},
-          {"id": 4},
-          {"id": 5},
-          {"id": 6},
-          {"id": 7}
-        ],
-        "condition": {
-          "expression": "{{and(equals(1.status; \"active\"); notEmpty(1.email))}}"
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": -100
         }
       }
-    ],
-    "metadata": {
-      "instant": false,
+    },
+    {
+      "id": 5,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": true
+      },
+      "mapper": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "post",
+        "headers": [
+          {
+            "name": "x-api-key",
+            "value": "REPLACE_YOUR_ANTHROPIC_API_KEY"
+          },
+          {
+            "name": "anthropic-version",
+            "value": "2023-06-01"
+          },
+          {
+            "name": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "body": "{\"model\":\"claude-3-5-sonnet-20241022\",\"max_tokens\":2000,\"messages\":[{\"role\":\"user\",\"content\":\"Generate a professional monthly reputation report as clean HTML for: Business: {{4.business_name}}, Month: {{4.report_month}}, New Reviews: {{4.total_reviews}}, Avg Rating: {{4.avg_rating}} stars. Include: professional header, stats table, rating trend, best review quoted, exactly 3 specific recommendations. Use inline CSS, UK spelling, sign off as Reputation Management Team. Return ONLY HTML.\"}]}",
+        "parseResponse": true
+      },
+      "metadata": {
+        "designer": {
+          "x": 800,
+          "y": -100
+        }
+      }
+    },
+    {
+      "id": 6,
+      "module": "gmail:ActionSendEmail",
       "version": 1,
-      "scenario": {
-        "roundtrips": 1,
-        "maxErrors": 3,
-        "autoCommit": true,
-        "autoCommitTriggerLast": true,
-        "sequential": false,
-        "confidential": false,
-        "dataloss": false,
-        "dlq": false,
-        "freshVariables": false
+      "parameters": {
+        "account": "REPLACE_YOUR_GMAIL_ACCOUNT_ID"
+      },
+      "mapper": {
+        "to": "{{4.client_email}}",
+        "subject": "Your Reputation Report — {{4.report_month}} | {{4.business_name}}",
+        "bodyType": "html",
+        "body": "{{5.data.content[].text}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 1000,
+          "y": -100
+        }
+      }
+    },
+    {
+      "id": 7,
+      "module": "telegram-bot:ActionSendMessage",
+      "version": 1,
+      "parameters": {
+        "token": "REPLACE_YOUR_TELEGRAM_BOT_TOKEN",
+        "chatId": "REPLACE_YOUR_TELEGRAM_CHAT_ID"
+      },
+      "mapper": {
+        "text": "📊 Monthly report sent!\n\n🏢 {{4.business_name}}\n📧 {{4.client_email}}\n📅 {{4.report_month}}\n✅ Delivered",
+        "parse_mode": "HTML"
+      },
+      "metadata": {
+        "designer": {
+          "x": 1200,
+          "y": -100
+        }
       }
     }
-  },
-  "scheduling": {
-    "type": "indefinitely",
-    "interval": 2592000
+  ],
+  "routes": [
+    {
+      "flow": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        }
+      ]
+    },
+    {
+      "flow": [
+        {
+          "id": 3
+        },
+        {
+          "id": 4
+        },
+        {
+          "id": 5
+        },
+        {
+          "id": 6
+        },
+        {
+          "id": 7
+        }
+      ],
+      "condition": {
+        "expression": "{{and(equals(1.status; \"active\"); notEmpty(1.email))}}"
+      }
+    }
+  ],
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    }
   }
 }
